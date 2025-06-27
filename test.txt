@@ -1,0 +1,3 @@
+Hello there !
+How are you ?
+I test a text editor.
