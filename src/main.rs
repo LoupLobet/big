@@ -1,11 +1,56 @@
 use ropey::{Rope, RopeSlice};
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::path::Path;
 
-pub struct Addr {
-    line: usize,
-    column: usize,
+#[derive(Clone, Copy)]
+pub enum Addr {
+    Index(usize),
+    Coordinates(usize, usize),
+    LineStart(usize),
+    LineEnd(usize),
+}
+
+impl Addr {
+    pub fn as_index(&self, buf: &Buffer) -> ropey::Result<usize> {
+        match self {
+            Addr::Index(idx) => Ok(*idx),
+            Addr::Coordinates(line, column) => {
+                let idx = buf.text.try_line_to_char(*line)?;
+                Ok(idx + *column)
+            }
+            Addr::LineStart(line) => buf.text.try_line_to_char(*line),
+            Addr::LineEnd(line) => {
+                Ok(buf.text.try_line_to_char(*line)? + buf.text.line(*line).len_chars())
+            }
+        }
+    }
+
+    pub fn as_coordinates(&self, buf: &Buffer) -> ropey::Result<(usize, usize)> {
+        match self {
+            Addr::Index(idx) => {
+                let line = buf.text.try_char_to_line(*idx)?;
+                let line_idx = buf.text.try_line_to_char(line)?;
+                Ok((line, idx - line_idx))
+            }
+            Addr::Coordinates(line, column) => Ok((*line, *column)),
+            Addr::LineStart(line) => Ok((*line, 0)),
+            Addr::LineEnd(line) => Ok((*line, buf.text.line(*line).len_chars())),
+        }
+    }
+
+    pub fn next_char(&self, buf: &Buffer) -> ropey::Result<Addr> {
+        Ok(Addr::Index(
+            Addr::Index(self.as_index(buf)? + 1).as_index(buf)?,
+        ))
+    }
+
+    pub fn prev_char(&self, buf: &Buffer) -> ropey::Result<Addr> {
+        Ok(Addr::Index(
+            Addr::Index(self.as_index(buf)? - 1).as_index(buf)?,
+        ))
+    }
 }
 
 pub struct Range {
@@ -14,18 +59,26 @@ pub struct Range {
 }
 
 impl Range {
-    pub fn extend_left(&mut self, buf: &Buffer) -> ropey::Result<()> {
-        let idx = buf.addr_to_idx(&self.from)?;
-        let new_from = buf.idx_to_addr(idx - 1)?;
-        self.from = new_from;
-        Ok(())
+    pub fn move_forward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+        self.from = self.from.next_char(buf)?;
+        self.to = self.to.next_char(buf)?;
+        Ok(self)
     }
 
-    pub fn extend_right(&mut self, buf: &Buffer) -> ropey::Result<()> {
-        let idx = buf.addr_to_idx(&self.to)?;
-        let new_to = buf.idx_to_addr(idx + 1)?;
-        self.to = new_to;
-        Ok(())
+    pub fn move_backward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+        self.from = self.from.prev_char(buf)?;
+        self.to = self.to.prev_char(buf)?;
+        Ok(self)
+    }
+
+    pub fn extend_forward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+        self.to = self.to.next_char(buf)?;
+        Ok(self)
+    }
+
+    pub fn extend_right(mut self, buf: &Buffer) -> ropey::Result<Range> {
+        self.from = self.from.prev_char(buf)?;
+        Ok(self)
     }
 }
 
@@ -54,34 +107,21 @@ impl Buffer {
         }
     }
 
-    fn addr_to_idx(&self, addr: &Addr) -> ropey::Result<usize> {
-        let idx = self.text.try_line_to_char(addr.line)?;
-        Ok(idx + addr.column)
-    }
-
-    fn idx_to_addr(&self, idx: usize) -> ropey::Result<Addr> {
-        let line = self.text.try_char_to_line(idx)?;
-        let line_idx = self.text.try_line_to_char(line)?;
-        Ok(Addr {
-            line: line,
-            column: idx - line_idx,
-        })
-    }
-
     pub fn get_slice(&self, r: &Range) -> ropey::Result<RopeSlice> {
-        let from_idx = self.addr_to_idx(&r.from)?;
-        let to_idx = self.addr_to_idx(&r.to)?;
-        Ok(self.text.slice(from_idx..to_idx))
+        let from = r.from.as_index(self)?;
+        let to = r.to.as_index(self)?;
+        Ok(self.text.slice(from..to))
     }
 
     pub fn set_slice(&mut self, r: &Range, s: RopeSlice) -> ropey::Result<Range> {
-        let from_idx = self.addr_to_idx(&r.from)?;
-        let to_idx = self.addr_to_idx(&r.to)?;
-        self.text.remove(from_idx..to_idx);
-        self.text.insert(from_idx, &s.to_string());
-        let from = self.idx_to_addr(from_idx)?;
-        let to = self.idx_to_addr(from_idx + s.len_chars())?;
-        Ok(Range { from: from, to: to })
+        let from = r.from.as_index(self)?;
+        let to = r.to.as_index(self)?;
+        self.text.remove(from..to);
+        self.text.insert(from, &s.to_string());
+        Ok(Range {
+            from: Addr::Index(from),
+            to: Addr::Index(from + s.len_chars()),
+        })
     }
 }
 
