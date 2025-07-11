@@ -69,6 +69,20 @@ pub struct Range {
 }
 
 impl Range {
+    pub fn from_anchor(anchor: Addr, to: Addr, buf: &Buffer) -> ropey::Result<Range> {
+        Ok(Range {
+            from: anchor,
+            to: Addr::Index(anchor.as_index(buf)? + to.as_index(buf)?),
+        })
+    }
+
+    pub fn to_anchor(from: Addr, anchor: Addr, buf: &Buffer) -> ropey::Result<Range> {
+        Ok(Range {
+            from: Addr::Index(anchor.as_index(buf)? - from.as_index(buf)?),
+            to: anchor,
+        })
+    }
+
     pub fn move_left(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.next_char(buf)?;
         self.to = self.to.next_char(buf)?;
@@ -159,7 +173,6 @@ fn main() {
     };
     println!("line 2: {}", buf.get_slice(&line_2_range).unwrap());
     line_2_range.move_left(&buf).unwrap();
-    line_2_range.extend_left(&buf).unwrap();
     line_2_range.extend_left(&buf).unwrap();
     println!(
         "line 2 forward by 1: {}",
