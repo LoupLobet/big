@@ -1,5 +1,4 @@
 use ropey::{Rope, RopeSlice};
-use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -124,6 +123,12 @@ impl Range {
 
 pub struct Buffer {
     text: Rope,
+}
+
+impl Default for Buffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Buffer {
