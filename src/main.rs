@@ -59,26 +59,26 @@ pub struct Range {
 }
 
 impl Range {
-    pub fn move_forward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+    pub fn move_forward(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.next_char(buf)?;
         self.to = self.to.next_char(buf)?;
-        Ok(self)
+        Ok(())
     }
 
-    pub fn move_backward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+    pub fn move_backward(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.prev_char(buf)?;
         self.to = self.to.prev_char(buf)?;
-        Ok(self)
+        Ok(())
     }
 
-    pub fn extend_forward(mut self, buf: &Buffer) -> ropey::Result<Range> {
+    pub fn extend_forward(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.to = self.to.next_char(buf)?;
-        Ok(self)
+        Ok(())
     }
 
-    pub fn extend_right(mut self, buf: &Buffer) -> ropey::Result<Range> {
+    pub fn extend_right(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.prev_char(buf)?;
-        Ok(self)
+        Ok(())
     }
 }
 
@@ -127,4 +127,14 @@ impl Buffer {
 
 fn main() {
     let buf = Buffer::from_file(Path::new("test.txt")).unwrap();
+    let mut line_2_range = Range {
+        from: Addr::LineStart(1),
+        to: Addr::LineEnd(1),
+    };
+    println!("line 2: {}", buf.get_slice(&line_2_range).unwrap());
+    line_2_range.move_forward(&buf).unwrap();
+    println!(
+        "line 2 forward by 1: {}",
+        buf.get_slice(&line_2_range).unwrap()
+    );
 }
