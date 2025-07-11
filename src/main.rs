@@ -10,6 +10,8 @@ pub enum Addr {
     Coordinates(usize, usize),
     LineStart(usize),
     LineEnd(usize),
+    BufferStart,
+    BufferEnd,
 }
 
 impl Addr {
@@ -24,6 +26,8 @@ impl Addr {
             Addr::LineEnd(line) => {
                 Ok(buf.text.try_line_to_char(*line)? + buf.text.line(*line).len_chars())
             }
+            Addr::BufferStart => Ok(0),
+            Addr::BufferEnd => Ok(buf.text.len_chars() - 1),
         }
     }
 
@@ -31,12 +35,18 @@ impl Addr {
         match self {
             Addr::Index(idx) => {
                 let line = buf.text.try_char_to_line(*idx)?;
-                let line_idx = buf.text.try_line_to_char(line)?;
-                Ok((line, idx - line_idx))
+                let column = *idx - buf.text.try_line_to_char(line)?;
+                Ok((line, column))
             }
             Addr::Coordinates(line, column) => Ok((*line, *column)),
             Addr::LineStart(line) => Ok((*line, 0)),
-            Addr::LineEnd(line) => Ok((*line, buf.text.line(*line).len_chars())),
+            Addr::LineEnd(line) => Ok((*line, buf.text.line(*line).len_chars() - 1)),
+            Addr::BufferStart => Ok((0, 0)),
+            Addr::BufferEnd => {
+                let line = buf.text.try_char_to_line(buf.text.len_chars() - 1)?;
+                let column = buf.text.len_chars() - 1 - buf.text.try_line_to_char(line)?;
+                Ok((line, column))
+            }
         }
     }
 
