@@ -69,25 +69,41 @@ pub struct Range {
 }
 
 impl Range {
-    pub fn move_forward(&mut self, buf: &Buffer) -> ropey::Result<()> {
+    pub fn move_left(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.next_char(buf)?;
         self.to = self.to.next_char(buf)?;
         Ok(())
     }
 
-    pub fn move_backward(&mut self, buf: &Buffer) -> ropey::Result<()> {
+    pub fn move_right(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.prev_char(buf)?;
         self.to = self.to.prev_char(buf)?;
         Ok(())
     }
 
-    pub fn extend_forward(&mut self, buf: &Buffer) -> ropey::Result<()> {
+    pub fn extend_left(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.to = self.to.next_char(buf)?;
         Ok(())
     }
 
     pub fn extend_right(&mut self, buf: &Buffer) -> ropey::Result<()> {
         self.from = self.from.prev_char(buf)?;
+        Ok(())
+    }
+
+    pub fn trim_left(&mut self, buf: &Buffer) -> ropey::Result<()> {
+        self.to = self.to.prev_char(buf)?;
+        if self.to.as_index(buf)? < self.from.as_index(buf)? {
+            (self.from, self.to) = (self.to, self.from);
+        }
+        Ok(())
+    }
+
+    pub fn trim_right(&mut self, buf: &Buffer) -> ropey::Result<()> {
+        self.to = self.from.next_char(buf)?;
+        if self.from.as_index(buf)? > self.to.as_index(buf)? {
+            (self.from, self.to) = (self.to, self.from);
+        }
         Ok(())
     }
 }
@@ -142,7 +158,9 @@ fn main() {
         to: Addr::LineEnd(1),
     };
     println!("line 2: {}", buf.get_slice(&line_2_range).unwrap());
-    line_2_range.move_forward(&buf).unwrap();
+    line_2_range.move_left(&buf).unwrap();
+    line_2_range.extend_left(&buf).unwrap();
+    line_2_range.extend_left(&buf).unwrap();
     println!(
         "line 2 forward by 1: {}",
         buf.get_slice(&line_2_range).unwrap()
