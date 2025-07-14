@@ -6,7 +6,23 @@ version = 4
 name = "big"
 version = "0.1.0"
 dependencies = [
+ "ninep",
  "ropey",
+]
+
+[[package]]
+name = "bitflags"
+version = "2.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
+
+[[package]]
+name = "ninep"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9d2cbf39c99718aa533c924295a796847b5f30befc6f3c015fa4965cce4c8a0"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
