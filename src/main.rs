@@ -15,8 +15,7 @@ pub enum Addr {
 }
 
 impl Addr {
-    pub fn as_index(&self, text: Arc<Mutex<Rope>>) -> ropey::Result<usize> {
-        let text = text.lock().unwrap();
+    pub fn as_index(&self, text: &Rope) -> ropey::Result<usize> {
         match self {
             Addr::Index(idx) => Ok(*idx),
             Addr::Coordinates(line, column) => {
@@ -30,8 +29,7 @@ impl Addr {
         }
     }
 
-    pub fn as_coordinates(&self, text: Arc<Mutex<Rope>>) -> ropey::Result<(usize, usize)> {
-        let text = text.lock().unwrap();
+    pub fn as_coordinates(&self, text: &Rope) -> ropey::Result<(usize, usize)> {
         match self {
             Addr::Index(idx) => {
                 let line = text.try_char_to_line(*idx)?;
@@ -50,132 +48,107 @@ impl Addr {
         }
     }
 
-    pub fn move_left(&mut self, n: usize, text: Arc<Mutex<Rope>>) -> ropey::Result<()> {
+    pub fn move_left(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
         *self = Addr::Index(self.as_index(text)? + n);
         Ok(())
     }
 
-    pub fn move_right(&mut self, n: usize, text: Arc<Mutex<Rope>>) -> ropey::Result<()> {
+    pub fn move_right(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
         *self = Addr::Index(self.as_index(text)? - n);
         Ok(())
     }
 }
 
 #[derive(Clone)]
-pub struct Address {
-    text: Arc<Mutex<Rope>>,
-    addr: Addr,
-}
-
-impl Address {
-    pub fn as_index(&self) -> ropey::Result<usize> {
-        self.addr.as_index(self.text.clone())
-    }
-
-    pub fn as_coordinates(&self) -> ropey::Result<(usize, usize)> {
-        self.addr.as_coordinates(self.text.clone())
-    }
-
-    pub fn move_left(&mut self, n: usize) -> ropey::Result<()> {
-        self.addr = Addr::Index(self.as_index()? + n);
-        Ok(())
-    }
-
-    pub fn move_right(&mut self, n: usize) -> ropey::Result<()> {
-        self.addr = Addr::Index(self.as_index()? - n);
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
 pub struct Dot {
-    text: Arc<Mutex<Rope>>,
     from: Addr,
     to: Addr,
 }
 
 impl Dot {
-    pub fn left_right(mut self, left: Addr, right: Addr) -> ropey::Result<Self> {
-        self.from = Addr::Index(left.as_index(self.text.clone())?);
-        self.to = Addr::Index(right.as_index(self.text.clone())?);
-        Ok(self)
+    pub fn new() -> Dot {
+        Dot {
+            from: Addr::BufferStart,
+            to: Addr::BufferEnd,
+        }
     }
-    pub fn anchor_left(mut self, anchor: Addr, to: Addr) -> ropey::Result<Self> {
-        self.from = Addr::Index(anchor.as_index(self.text.clone())?);
-        self.to =
-            Addr::Index(anchor.as_index(self.text.clone())? + to.as_index(self.text.clone())?);
-        Ok(self)
+    pub fn left_right(&mut self, text: &Rope, left: Addr, right: Addr) -> ropey::Result<()> {
+        self.from = Addr::Index(left.as_index(text)?);
+        self.to = Addr::Index(right.as_index(text)?);
+        Ok(())
     }
-
-    pub fn anchor_right(mut self, from: Addr, anchor: Addr) -> ropey::Result<Self> {
-        self.from =
-            Addr::Index(anchor.as_index(self.text.clone())? - from.as_index(self.text.clone())?);
-        self.to = Addr::Index(anchor.as_index(self.text.clone())?);
-        Ok(self)
+    pub fn anchor_left(&mut self, text: &Rope, anchor: Addr, to: Addr) -> ropey::Result<()> {
+        self.from = Addr::Index(anchor.as_index(text)?);
+        self.to = Addr::Index(anchor.as_index(text)? + to.as_index(text)?);
+        Ok(())
     }
 
-    pub fn move_left(mut self, n: usize) -> ropey::Result<Self> {
-        self.from.move_left(n, self.text.clone())?;
-        self.to.move_left(n, self.text.clone())?;
-        Ok(self)
+    pub fn anchor_right(&mut self, text: &Rope, from: Addr, anchor: Addr) -> ropey::Result<()> {
+        self.from = Addr::Index(anchor.as_index(text)? - from.as_index(text)?);
+        self.to = Addr::Index(anchor.as_index(text)?);
+        Ok(())
     }
 
-    pub fn move_right(mut self, n: usize) -> ropey::Result<Self> {
-        self.from.move_right(n, self.text.clone())?;
-        self.to.move_right(n, self.text.clone())?;
-        Ok(self)
+    pub fn move_left(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.from.move_left(text, n)?;
+        self.to.move_left(text, n)?;
+        Ok(())
     }
 
-    pub fn extend_left(mut self, n: usize) -> ropey::Result<Self> {
-        self.to.move_left(n, self.text.clone())?;
-        Ok(self)
+    pub fn move_right(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.from.move_right(text, n)?;
+        self.to.move_right(text, n)?;
+        Ok(())
     }
 
-    pub fn extend_right(mut self, n: usize) -> ropey::Result<Self> {
-        self.from.move_right(n, self.text.clone())?;
-        Ok(self)
+    pub fn extend_left(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.to.move_left(text, n)?;
+        Ok(())
     }
 
-    pub fn trim_left(mut self, n: usize) -> ropey::Result<Self> {
-        self.to.move_right(n, self.text.clone())?;
-        if self.to.as_index(self.text.clone())? < self.from.as_index(self.text.clone())? {
+    pub fn extend_right(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.from.move_right(text, n)?;
+        Ok(())
+    }
+
+    pub fn trim_left(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.to.move_right(text, n)?;
+        if self.to.as_index(text)? < self.from.as_index(text)? {
             (self.from, self.to) = (self.to, self.from);
         }
-        Ok(self)
+        Ok(())
     }
 
-    pub fn trim_right(mut self, n: usize) -> ropey::Result<Self> {
-        self.from.move_left(n, self.text.clone())?;
-        if self.from.as_index(self.text.clone())? > self.to.as_index(self.text.clone())? {
+    pub fn trim_right(&mut self, text: &Rope, n: usize) -> ropey::Result<()> {
+        self.from.move_left(text, n)?;
+        if self.from.as_index(text)? > self.to.as_index(text)? {
             (self.from, self.to) = (self.to, self.from);
         }
-        Ok(self)
+        Ok(())
     }
 
-    pub fn get(&self) -> ropey::Result<String> {
-        let from = self.from.as_index(self.text.clone())?;
-        let to = self.to.as_index(self.text.clone())?;
+    pub fn get(&self, text: &Rope) -> ropey::Result<String> {
+        let from = self.from.as_index(text)?;
+        let to = self.to.as_index(text)?;
 
-        let text = self.text.lock().unwrap();
         let slice: String = text.slice(from..to).chars().collect();
         Ok(slice)
     }
 
-    pub fn set(self, s: RopeSlice) -> ropey::Result<Self> {
-        let from = self.from.as_index(self.text.clone())?;
-        let to = self.to.as_index(self.text.clone())?;
+    pub fn set(&mut self, text: &mut Rope, s: RopeSlice) -> ropey::Result<()> {
+        let from = self.from.as_index(text)?;
+        let to = self.to.as_index(text)?;
 
-        let text = Arc::clone(&self.text);
-        let mut text = text.lock().unwrap();
         text.remove(from..to);
         text.insert(from, &s.to_string());
-        Ok(self)
+        Ok(())
     }
 }
 
 #[derive(Clone)]
 pub struct Buffer {
-    text: Arc<Mutex<Rope>>,
+    text: Rope,
+    dot: Vec<Dot>,
 }
 
 impl Default for Buffer {
@@ -187,7 +160,8 @@ impl Default for Buffer {
 impl Buffer {
     pub fn new() -> Self {
         Buffer {
-            text: Arc::new(Mutex::new(Rope::new())),
+            text: Rope::new(),
+            dot: vec![Dot::new()],
         }
     }
 
@@ -203,44 +177,77 @@ impl Buffer {
     {
         match Rope::from_reader(reader) {
             Ok(text) => Ok(Buffer {
-                text: Arc::new(Mutex::new(text)),
+                text,
+                dot: vec![Dot::new()],
             }),
             Err(e) => Err(e),
         }
     }
 
-    pub fn new_dot(&self) -> Dot {
-        Dot {
-            text: Arc::clone(&self.text),
-            from: Addr::BufferStart,
-            to: Addr::BufferStart,
-        }
+    pub fn left_right(&mut self, left: Addr, right: Addr) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.left_right(&self.text, left, right);
+        });
+    }
+    pub fn anchor_left(&mut self, anchor: Addr, to: Addr) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.anchor_left(&self.text, anchor, to);
+        });
+    }
+
+    pub fn anchor_right(&mut self, from: Addr, anchor: Addr) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.anchor_right(&self.text, from, anchor);
+        });
+    }
+
+    pub fn move_left(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.move_left(&self.text, n);
+        });
+    }
+
+    pub fn move_right(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.move_right(&self.text, n);
+        });
+    }
+
+    pub fn extend_left(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.extend_left(&self.text, n);
+        });
+    }
+
+    pub fn extend_right(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.extend_right(&self.text, n);
+        });
+    }
+
+    pub fn trim_left(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.trim_left(&self.text, n);
+        });
+    }
+
+    pub fn trim_right(&mut self, n: usize) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.trim_right(&self.text, n);
+        });
+    }
+
+    pub fn get(&self) -> Vec<ropey::Result<String>> {
+        self.dot.iter().map(|dot| dot.get(&self.text)).collect()
+    }
+
+    pub fn set(&mut self, s: RopeSlice) {
+        self.dot.iter_mut().for_each(|dot| {
+            let _ = dot.set(&mut self.text, s);
+        });
     }
 }
 
 fn main() {
     let buf = Buffer::from_file(Path::new("test.txt")).unwrap();
-    let mut dot = buf
-        .new_dot()
-        .anchor_left(Addr::LineStart(1), Addr::Index(3))
-        .unwrap();
-    println!("line 2: {}", dot.get().unwrap());
-    dot = dot.move_left(1).unwrap();
-    dot = dot.extend_left(1).unwrap();
-    println!("line 2 forward by 1: {}", dot.get().unwrap());
-
-    buf.new_dot()
-        .left_right(Addr::LineStart(2), Addr::LineStart(2))
-        .unwrap()
-        .set(RopeSlice::from("CACA"))
-        .unwrap();
-
-    println!(
-        "{}",
-        buf.new_dot()
-            .left_right(Addr::BufferStart, Addr::BufferEnd)
-            .unwrap()
-            .get()
-            .unwrap()
-    );
 }
