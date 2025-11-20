@@ -1,4 +1,5 @@
 use ropey::{Rope, RopeSlice};
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -55,13 +56,40 @@ impl<'a> Addr {
     }
 
     pub fn move_left(&mut self, text: &'a Arc<Mutex<Rope>>, n: usize) -> ropey::Result<()> {
-        *self = Addr::Index(self.as_index(text)? + n);
-        Ok(())
+        match self.as_index(text)?.cmp(&n) {
+            Ordering::Less => Err(ropey::Error::CharIndexOutOfBounds(
+                0,
+                text.lock().unwrap().len_chars(),
+            )),
+            _ => {
+                *self = Addr::Index(self.as_index(text)? - n);
+                Ok(())
+            }
+        }
     }
 
+    //
+    //
+    //
+    //
+    // NEED TO CALL MUTEX LOCK HIGHER IN THE CALL HIERARCHY (probably at dot level)
+    //
+    //
+    //
+    //
+
     pub fn move_right(&mut self, text: &'a Arc<Mutex<Rope>>, n: usize) -> ropey::Result<()> {
-        *self = Addr::Index(self.as_index(text)? - n);
-        Ok(())
+        let text = text.lock().unwrap();
+        match (self.as_index(text)? + n).cmp(&text.len_chars()) {
+            Ordering::Greater => Err(ropey::Error::CharIndexOutOfBounds(
+                text.len_chars(),
+                text.len_chars(),
+            )),
+            _ => {
+                *self = Addr::Index(self.as_index(text)? + n);
+                Ok(())
+            }
+        }
     }
 }
 
@@ -192,4 +220,90 @@ impl Buffer {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_buffer_from_file() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+        dot.left_right(Addr::BufferStart, Addr::BufferEnd).unwrap();
+        assert_eq!(
+            buf.get(&dot).unwrap(),
+            String::from("Hello there !\nHow are you ?\nI test a text editor.")
+        );
+    }
+
+    #[test]
+    fn test_dot_anchor_left() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+        dot.anchor_left(Addr::BufferStart, Addr::Index(5)).unwrap();
+        assert_eq!(buf.get(&dot).unwrap(), "Hello");
+    }
+
+    #[test]
+    fn test_dot_anchor_right() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+        dot.anchor_right(Addr::Index(5), Addr::Index(5)).unwrap();
+        assert_eq!(buf.get(&dot).unwrap(), "Hello");
+    }
+
+    #[test]
+    fn test_dot_left_right() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+        dot.left_right(Addr::Index(5), Addr::Index(10)).unwrap();
+        assert_eq!(buf.get(&dot).unwrap(), " ther");
+    }
+
+    #[test]
+    fn test_dot_move_left() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+
+        // out of buffer case
+        dot.anchor_left(Addr::BufferStart, Addr::Index(2)).unwrap();
+        let ret = dot.move_left(1);
+        println!("{:?}", ret);
+        assert!(ret.is_err());
+        // regular case
+        dot.anchor_right(Addr::Index(7), Addr::BufferEnd).unwrap();
+        dot.move_left(1).unwrap();
+        assert_eq!(buf.get(&dot).unwrap(), " editor");
+    }
+
+    #[test]
+    fn test_dot_move_right() {
+        let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+        let mut dot = Dot::new(&buf);
+
+        // out of buffer case
+        dot.anchor_right(Addr::Index(1), Addr::BufferEnd).unwrap();
+        let ret = dot.move_right(1);
+        assert!(ret.is_err());
+        // regular case
+        dot.anchor_left(Addr::BufferStart, Addr::Index(5)).unwrap();
+        dot.move_right(2).unwrap();
+        assert_eq!(buf.get(&dot).unwrap(), "llo t");
+    }
+
+    // #[test]
+    // fn test_dot_extend_left() {
+    //     let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+    //     let mut dot = Dot::new(&buf);
+    //     dot.anchor_right(Addr::Index(7), Addr::BufferEnd).unwrap();
+    //     dot.extend_left(2).unwrap();
+    //     assert_eq!(buf.get(&dot).unwrap(), "t editor.");
+    // }
+
+    // #[test]
+    // fn test_dot_extend_right() {
+    //     let buf = Buffer::from_file(Path::new("tests/test.txt")).unwrap();
+    //     let mut dot = Dot::new(&buf);
+    //     dot.anchor_right(Addr::Index(7), Addr::BufferEnd).unwrap();
+    //     dot.move_right(22).unwrap();
+    //     assert_eq!(buf.get(&dot).unwrap(), "e you ?");
+    // }
+}
